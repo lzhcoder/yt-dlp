@@ -4,3 +4,6 @@
 /harvest_selftest/
 /selftest_out/
 .idea
+
+__pycache__/
+*.pyc
