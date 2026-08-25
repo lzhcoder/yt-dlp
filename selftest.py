@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 from vla_pipeline.bd_client import get_client, MockBrightDataClient
 from vla_pipeline.labeler import (
     adapt_youtube, adapt_tiktok, relevance_score, segment_windows,
-    derive_scenario, derive_env, label_record, label_batch, match_dataset_id,
+    derive_scenario, derive_env, label_record, label_batch,
 )
 from vla_pipeline.schema import validate_batch, validate_batch_relaxed
 from vla_pipeline.taxonomy import REGISTRY, WAREHOUSE_PICK_PLACE

@@ -38,7 +38,7 @@ from pathlib import Path
 from vla_pipeline.bd_client import get_client, BrightDataClient
 from vla_pipeline.labeler import (
     adapt, label_batch, match_dataset_id, relevance_score, segment_windows,
-    derive_scenario, derive_env,
+    derive_scenario, derive_env, DatasetNotAvailable,
 )
 from vla_pipeline.taxonomy import REGISTRY
 
@@ -68,9 +68,11 @@ def _run_platform(
     fixture_dir: str,
 ) -> tuple[list[dict], dict[str, int], int]:
     """跑单个平台的发现 → 标注 → 切分，返回 (候选 clips, 拒绝原因, 原始记录数)。"""
-    dataset_id = match_dataset_id(datasets, platform)
-    if not dataset_id:
-        print(f"  [{platform}] 未在账号爬虫清单里匹配到对应 dataset_id，跳过")
+    try:
+        dataset_id = match_dataset_id(datasets, platform)
+    except DatasetNotAvailable as e:
+        # 账号里没有对应爬虫就跳过这个平台，而不是用一个失效 ID 撞 API
+        print(f"  [{platform}] {e}，跳过")
         return [], {}, 0
 
     queries = spec.to_search_queries()

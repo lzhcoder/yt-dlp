@@ -491,15 +491,10 @@ def label_batch(
 # 按平台名匹配 dataset_id
 # ---------------------------------------------------------------------------
 
-# 已知的目标数据集默认配置：开箱即用，不用每次跑 --list-datasets 手动找。
-# 这里的 id 只是「兜底默认值」——运行时仍优先用 list_datasets() 动态匹配，
-# 只有当账号里匹配不到（或离线 mock）时才回退到这个默认值。
-# 如需换成自己账号下别的爬虫，覆盖环境变量 BRIGHTDATA_YT_DATASET_ID /
-# BRIGHTDATA_TT_DATASET_ID 即可，不必改代码。
-DEFAULT_DATASET_IDS: dict[str, str] = {
-    "youtube": "gd_lk56epmy2i5g7lzu0k",   # Youtube - Videos posts
-    "tiktok": "gd_lu702nij2f790tmv9h",    # TikTok - Posts
-}
+# dataset_id 随账号权限变化，官方 GET /datasets/list 返回的就是当前账号可用的
+# dataset。不要把可能属于另一个账号/产品版本的旧 ID 写死成默认 fallback——
+# 开发者复制代码后最容易得到的是 401/404/invalid dataset，而不是成功运行。
+# 正确做法：list_datasets() → 精确校验名匹配 → 环境变量覆盖 → 仍不存在就报错。
 
 # 精确匹配模板：避免在长清单里被同名前缀的爬虫带偏。
 # YouTube 账号下常有 "youtube video urls" / "yt videos" / "youtube discovery"
@@ -511,14 +506,20 @@ _DATASET_MATCH_KEYWORDS: dict[str, list[str]] = {
 }
 
 
-def match_dataset_id(datasets: list[dict[str, Any]], platform: str) -> str | None:
+class DatasetNotAvailable(RuntimeError):
+    """账号里没有匹配的爬虫，应去控制台开通，而不是静默回退到失效 ID。"""
+
+
+def match_dataset_id(datasets: list[dict[str, Any]], platform: str) -> str:
     """从 list_datasets() 结果里按名字匹配平台对应的 dataset_id。
 
     匹配策略（从严到宽）：
       1. 精确词组匹配：YouTube 要 "videos posts"，避免被 "youtube video urls" /
          "yt videos" 这类同名爬虫带偏。
       2. 平台名兜底：只含 "youtube" / "tiktok" 但带 "posts" 的也认。
-      3. 都匹配不到 → 回退到 DEFAULT_DATASET_IDS 里的默认 id（仍可为 None）。
+      3. 环境变量覆盖（BRIGHTDATA_YT_DATASET_ID / BRIGHTDATA_TT_DATASET_ID）。
+      4. 都匹配不到 → 抛 DatasetNotAvailable，让开发者去开通权限，
+         而不是静默用一个失效 ID 撞 API。
     """
     platform_lower = platform.lower()
     keywords = _DATASET_MATCH_KEYWORDS.get(platform_lower, [])
@@ -541,9 +542,14 @@ def match_dataset_id(datasets: list[dict[str, Any]], platform: str) -> str | Non
         if platform_lower in name and "post" in name:
             return ds_id
 
-    # 3) 兜底默认值（仍可被环境变量覆盖）
+    # 3) 环境变量覆盖
     env_key = f"BRIGHTDATA_{platform_lower[:2].upper()}_DATASET_ID"
     env_val = os.environ.get(env_key)
     if env_val:
         return env_val
-    return DEFAULT_DATASET_IDS.get(platform_lower)
+
+    # 4) 都没有 → 明确报错，不要用写死的旧 ID 静默撞 API
+    raise DatasetNotAvailable(
+        f"账号里未找到 {platform} 对应爬虫，请先在控制台开通，"
+        f"或用环境变量 {env_key} 指定一个当前账号可用的 dataset_id。"
+    )
